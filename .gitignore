@@ -1,0 +1,30 @@
+# Data files/ These lines tell Git to ignore all files in the data/raw and data/processed directories. 
+data/raw/*
+data/processed/*
+
+# Results
+results/figures/*
+results/tables/*
+
+# R specific/ .Rhistory contains command history, .RData stores the R workspace, and .Rproj.user/ is a directory created by RStudio for user-specific files.
+.Rhistory
+.RData
+.Rproj.user/
+
+# System specific/ These are hidden files created by macOS (.DS_Store) and Windows (Thumbs.db) for storing custom attributes of their containing folders.
+
+.DS_Store
+Thumbs.db
+
+# Large files
+*.csv
+*.rds
+*.pdf
+
+# Keep .gitkeep files
+#The exclamation mark (!) negates the previous ignore rules for these specific files.
+#This allows you to keep empty directories in your Git repository (Git normally ignores empty directories).
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!results/figures/.gitkeep
+!results/tables/.gitkeep
