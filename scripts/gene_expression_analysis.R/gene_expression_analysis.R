@@ -23,6 +23,8 @@ drug_response_a375 <- gdsc_a375 %>%
   select(DRUG_NAME, PUTATIVE_TARGET, LN_IC50, AUC)
 print("Top 20 most effective drugs on A375 (based on lowest LN_IC50):")
 print(head(drug_response_a375, 20))
+
+
 # Save results
 output_direct <- "~/Desktop/R_output/Final_data"
 dir.create(output_direct, showWarnings = FALSE)
