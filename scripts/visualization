@@ -1,0 +1,70 @@
+
+library(tidyverse)
+library(scales)  # for nice color scales
+
+# Prepare data for plotting
+heatmap_data <- prepared_go_results %>%
+  select(cell_line, Description, p.adjust) %>%
+  group_by(cell_line) %>%
+  top_n(30, wt = -p.adjust) %>%  # Select top 30 pathways for each cell line
+  ungroup() %>%
+  mutate(neg_log10_p = -log10(p.adjust))  # Calculate -log10(p.adjust)
+
+# Create the heatmap
+
+ggplot(heatmap_data, aes(x = cell_line, y = Description, fill = neg_log10_p)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 8)) +
+  labs(title = "Top 30 Enriched Pathways Across Melanoma Cell Lines",
+       x = "Cell Line",
+       y = "Pathway Description",
+       fill = "-log10(adj.P)")
+
+# Save the plot
+ggsave("~/Desktop/R_output/Final_data/pathway_enrichment_heatmap_ggplot.pdf", width = 12, height = 10)
+print("~/Desktop/R_output/Final_data/Heatmap has been saved as 'pathway_enrichment_heatmap_ggplot.pdf' in your working directory.")
+
+# Display the plot in the R environment
+print(last_plot())
+
+
+
+######interpretation functional
+
+# Prepare summary
+summary_results <- list(
+  common_pathways = head(common_pathways, 20),
+  unique_pathways = unique_pathways %>% group_by(cell_line) %>% slice_head(n = 5) %>% ungroup(),
+  differential_pathways = head(pathway_differences, 20)
+)
+
+# Create a summary report
+report <- c(
+  "Summary of Comparative Pathway Analysis",
+  "",
+  "1. Top 20 Common Pathways Across All Cell Lines:",
+  capture.output(print(summary_results$common_pathways %>% select(Description, cell_line_count))),
+  "",
+  "2. Top 5 Unique Pathways for Each Cell Line:",
+  capture.output(print(summary_results$unique_pathways %>% select(cell_line, Description, p.adjust))),
+  "", ##capture the output into a variable
+  "3. Top 20 Differentially Enriched Pathways:"
+)
+
+if (nrow(summary_results$differential_pathways) > 0) {
+  report <- c(report, capture.output(print(summary_results$differential_pathways %>% select(Description, statistic, p.adj))))
+} else {
+  report <- c(report, "No significantly differentially enriched pathways were found.")
+}
+
+
+# Save the report
+writeLines(report, "~/Desktop/R_output/Final_data/pathway_analysis_summary.txt")
+print("Summary report saved as 'pathway_analysis_summary.txt'")
+
+# Save full results for further analysis
+saveRDS(summary_results, "~/Desktop/R_output/Final_data/pathway_analysis_results.rds")
+print("Full results saved as '~/Desktop/R_output/Final_data/pathway_analysis_results.rds'")

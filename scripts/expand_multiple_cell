@@ -1,0 +1,213 @@
+##############Expand your analysis to multiple cell lines#########
+
+# Define melanoma cell lines of interest
+melanoma_lines <- c("A375", "M00921", "HMY1", "SKMEL24")
+
+# Filter CCLE data for selected melanoma lines
+melanoma_expression <- ccle_expression %>%
+  filter(str_detect(cell_line, paste(melanoma_lines, collapse = "|")))
+
+# Filter GDSC data for selected melanoma lines
+melanoma_response <- gdsc_response %>%
+  filter(str_detect(CELL_LINE_NAME, paste(melanoma_lines, collapse = "|")))
+
+# Analyze top expressed genes across melanoma lines
+top_genes_per_line <- melanoma_expression %>%
+  group_by(cell_line) %>%
+  top_n(100, rna_expression) %>%
+  ungroup()
+
+#unique() function: identifies the distinct values in a vector or column
+unique_cell_lines <- unique(top_genes_per_line$cell_line)
+print(unique_cell_lines)
+
+# Visualize top expressed genes
+ggplot(top_genes_per_line, aes(x = cell_line, y = rna_expression, fill = cell_line)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Top 100 Expressed Genes Across Melanoma Cell Lines",
+       x = "Cell Line", y = "RNA Expression") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Save the plot
+ggsave("~/Desktop/R_output/Final_data/top_genes_melanoma_lines.pdf", width = 10, height = 6)
+
+# Analyze drug response across melanoma lines
+drug_response_summary <- melanoma_response %>%
+  group_by(CELL_LINE_NAME, DRUG_NAME) %>%  #calculate the mean IC50 values for each combination of cell line and drug
+  summarise(mean_LN_IC50 = mean(LN_IC50, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(CELL_LINE_NAME) %>%
+  top_n(-20, mean_LN_IC50)  # Top 20 most effective drugs (lowest IC50)
+
+# Visualize drug response
+ggplot(drug_response_summary, aes(x = CELL_LINE_NAME, y = mean_LN_IC50, fill = DRUG_NAME)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Top 20 Most Effective Drugs Across Melanoma Cell Lines",
+       x = "Cell Line", y = "Mean LN_IC50") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+
+# Save the plot
+ggsave("~/Desktop/R_output/Final_data/drug_response_melanoma_lines.pdf", width = 12, height = 8)
+
+
+
+####################comparative pathway analysis##############
+
+
+
+
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(AnnotationDbi)
+library(dplyr)
+library(stringr)
+
+# Function to convert gene symbols to Entrez IDs
+convert_to_entrez <- function(gene_list) {
+  print(paste("Number of genes before conversion:", length(gene_list)))
+  print("Sample of input genes:")
+  print(head(gene_list))
+
+  entrez_ids <- mapIds(org.Hs.eg.db,
+                       keys = gene_list,
+                       column = "ENTREZID",
+                       keytype = "SYMBOL",
+                       multiVals = "first")
+  
+  valid_ids <- entrez_ids[!is.na(entrez_ids)]
+  print(paste("Number of genes after conversion:", length(valid_ids)))
+  
+  return(valid_ids)
+}
+
+# Modified function to perform GO enrichment
+perform_go_enrichment <- function(gene_list, cell_line_name) {
+  print(paste("Processing cell line:", cell_line_name))
+  print(paste("Number of input genes:", length(gene_list)))
+  
+  entrez_ids <- convert_to_entrez(gene_list)
+  
+  if (length(entrez_ids) == 0) {
+    warning(paste("No genes could be converted to Entrez IDs for", cell_line_name))
+    return(NULL) ##input data doesn't meet the requirements for the subsequent analysis steps.and exit the function
+  }
+  ##tryCatch({...}, error = function(e) {...}):
+  ##This is R's error handling mechanism. It attempts to run the code inside 
+  go_result <- tryCatch({
+    enrichGO(gene = entrez_ids,
+             OrgDb = org.Hs.eg.db, #specifies the organism database to use.(here is human)
+             keyType = "ENTREZID",
+             ont = "BP",
+             pAdjustMethod = "BH",
+             pvalueCutoff = 0.05,
+             qvalueCutoff = 0.2)
+  }, error = function(e) {
+    warning(paste("Error in GO enrichment for", cell_line_name, ":", e$message))
+    return(NULL)
+  })
+  
+  if (!is.null(go_result) && nrow(go_result@result) > 0) {
+    go_result@result$cell_line <- cell_line_name
+    return(go_result@result)
+  } else {
+    warning(paste("No enriched GO terms found for", cell_line_name))
+    return(NULL)
+  }
+}
+
+# Print unique cell lines in top_genes_per_line
+print("Unique cell lines in top_genes_per_line:")
+print(unique(top_genes_per_line$cell_line))
+
+# Perform GO enrichment for each cell line
+go_results <- melanoma_lines %>%
+  map_dfr(function(line) { #Each element from melanoma_lines is passed to the anonymous function as line.
+    print(paste("Processing line:", line))
+    matching_lines <- str_detect(top_genes_per_line$cell_line, fixed(line, ignore_case = TRUE))
+    top_genes <- top_genes_per_line %>%
+      filter(matching_lines) %>%
+      pull(gene_name)
+    
+    print(paste("Number of top genes for", line, ":", length(top_genes)))
+    
+    if (length(top_genes) == 0) {
+      warning(paste("No genes found for cell line:", line))
+      return(data.frame())
+    }
+    
+    result <- perform_go_enrichment(top_genes, line)
+    if (is.null(result)) {
+      return(data.frame())  # Return an empty data frame if no results
+    } else {
+      return(result)
+    }
+  })
+
+# Check if we have any results
+if (nrow(go_results) == 0) {
+  print("No GO enrichment results were obtained. Please check your gene lists and ensure they contain valid gene symbols.")
+} else {
+  print("GO enrichment analysis completed successfully.")
+  print("Sample of results:")
+  print(head(go_results))
+}
+
+# If successful, create visualization
+if (nrow(go_results) > 0) {
+  # Visualize top pathways for each cell line
+  top_pathways <- go_results %>%
+    group_by(cell_line) %>%
+    top_n(10, -p.adjust) %>%
+    ungroup()
+  
+  library(ggplot2)
+  ggplot(top_pathways, aes(x = cell_line, y = Description, fill = -log10(p.adjust))) +
+    geom_tile() +
+    scale_fill_viridis_c() +
+    theme_minimal() +
+    labs(title = "Top 10 Enriched Biological Processes Across Melanoma Cell Lines",
+         x = "Cell Line", y = "Biological Process", fill = "-log10(adj.P)") +
+    theme(axis.text.y = element_text(size = 8))
+  
+  ggsave("top_pathways_heatmap.pdf", width = 12, height = 10)
+}
+
+
+# Assuming go_results is your data frame with GO enrichment results
+library(dplyr)
+library(conflicted)
+
+# Resolve conflicts in favor of dplyr
+conflict_prefer("filter", "dplyr")
+conflict_prefer("select", "dplyr")
+conflict_prefer("arrange", "dplyr")
+
+prepared_go_results <- go_results %>%
+  select(cell_line, ID, Description, pvalue, p.adjust, Count) %>%
+  arrange(cell_line, p.adjust)
+#sorted first by cell_line and then by p.adjust within each cell_line group. 
+# Print the first few rows to check the data
+print(head(prepared_go_results))
+
+# Find pathways present in all cell lines
+common_pathways <- prepared_go_results %>%
+  group_by(ID, Description) %>%
+  summarize(cell_line_count = n_distinct(cell_line), .groups = "drop") %>%
+  filter(cell_line_count == n_distinct(prepared_go_results$cell_line))
+#n_distinct(cell_line): This function counts the number of distinct (unique) values in the cell_line column.
+
+# Find pathways unique to each cell line
+unique_pathways <- prepared_go_results %>%
+  group_by(ID, Description) %>%
+  filter(n_distinct(cell_line) == 1) %>%
+  ungroup()
+
+print("Common pathways across all cell lines:")
+print(common_pathways)
+
+print("Unique pathways for each cell line:")
+print(unique_pathways)
