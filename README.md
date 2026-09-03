@@ -3,6 +3,23 @@
 
 This repository contains R code for analyzing gene expression and drug response data in melanoma cell lines using the Cancer Cell Line Encyclopedia (CCLE) and Genomics of Drug Sensitivity in Cancer (GDSC) datasets.
 
+## Current status and interpretation
+
+This repository is an exploratory prototype, not a completed pharmacogenomic analysis.
+The code demonstrates CCLE/GDSC loading, A375 summaries, pathway enrichment, and
+multi-cell-line comparisons. It does not yet establish a validated association between
+gene expression and drug sensitivity.
+
+The strengthened data loader now:
+
+- refuses to install packages during an analysis run;
+- keeps data under a configurable project directory;
+- reads the GDSC Excel workbook with the correct Excel reader; and
+- validates the required GDSC columns before downstream analysis.
+
+See [PROJECT_STRENGTHENING.md](PROJECT_STRENGTHENING.md) before interpreting or
+extending the exploratory output.
+
 ## Table of Contents
 1. [Setup and Data Loading](#setup-and-data-loading)
 2. [Data Processing](#data-processing)
@@ -14,32 +31,15 @@ This repository contains R code for analyzing gene expression and drug response 
 ## Setup and Data Loading
 
 ```R
-# Install and load required packages
-packages <- c('tidyverse', 'data.table', "devtools", "usethis", "rvest", "stringdist", 'readxl')
-install.packages(packages)
-
-# Install Bioconductor packages
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-BiocManager::install("depmap")
-
-# Load libraries
-for (pkg in packages) {
-  library(pkg, character.only = TRUE)
-}
-library(depmap)
-
-# Load CCLE expression data
-ccle_expression <- depmap_TPM()
-write_csv(ccle_expression, "CCLE_expression.csv")
-
-# Load GDSC drug response data
-gdsc_url <- 'https://cog.sanger.ac.uk/cancerrxgene/GDSC_release8.5/GDSC2_fitted_dose_response_27Oct23.xlsx'
-download.file(gdsc_url, destfile = "GDSC2_fitted_dose_response_latest.csv")
-gdsc_response <- fread("GDSC2_fitted_dose_response_latest.csv")
+# Install dependencies once in a controlled environment; see requirements.R.
+Sys.setenv(MELANOMA_DATA_DIR = "data")
+source("scripts/load_data.R")
 ```
 
-This section sets up the R environment by installing and loading necessary packages. It then loads the CCLE gene expression data and GDSC drug response data.
+The data loader downloads the registered GDSC `.xlsx` file and imports it with
+`readxl::read_excel()`; it does not disguise the workbook as a CSV.
+It also fails with a clear dependency or schema error instead of installing or
+continuing silently during an analysis run.
 
 ## Data Processing
 
